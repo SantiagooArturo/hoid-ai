@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Rocket, Target, Zap } from 'lucide-react';
+import { Rocket, Target, Zap, Loader2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -19,6 +19,7 @@ export default function SignupForm() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [occupation, setOccupation] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const { signUp, error } = useAuth();
   const router = useRouter();
 
@@ -36,10 +37,13 @@ export default function SignupForm() {
     }
 
     try {
+      setIsLoading(true);
       await signUp(email, password, occupation);
       router.push('/');
     } catch (err) {
       console.error('Signup error:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -165,9 +169,17 @@ export default function SignupForm() {
 
             <Button
               type="submit"
+              disabled={isLoading}
               className="w-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-orange-500 hover:opacity-90 transition-opacity font-medium"
             >
-              Create Account
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating Account...
+                </>
+              ) : (
+                'Create Account'
+              )}
             </Button>
 
             <div className="text-center">

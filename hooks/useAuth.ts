@@ -1,52 +1,109 @@
 import { useState, useEffect } from 'react';
+import { 
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut,
+  User as FirebaseUser
+} from 'firebase/auth';
+import { 
+  doc, 
+  setDoc, 
+  getDoc, 
+  serverTimestamp 
+} from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 
-// Credenciales estáticas para pruebas
-const STATIC_USERS = [
-  {
-    email: 'test.student@university.edu',
-    password: 'Test123!',
-    uid: '1',
-    occupation: 'university_student'
-  }
-];
+// Tipo para el usuario con datos adicionales
+interface User extends FirebaseUser {
+  occupation?: string;
+}
+
+// Tipo para los datos del usuario en Firestore
+interface UserData {
+  email: string;
+  occupation: string;
+  createdAt: any;
+  lastLoginAt: any;
+}
 
 export function useAuth() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Observador del estado de autenticación
   useEffect(() => {
-    // Simular verificación de autenticación
-    const checkAuth = () => {
-      const savedUser = localStorage.getItem('auth_user');
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Si hay un usuario, obtener sus datos adicionales de Firestore
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          const userData = userDoc.data() as UserData;
+          
+          // Combinar datos de Auth y Firestore
+          setUser({
+            ...firebaseUser,
+            occupation: userData?.occupation
+          });
+        } catch (err) {
+          console.error('Error fetching user data:', err);
+          setUser(firebaseUser as User);
+        }
+      } else {
+        setUser(null);
       }
       setLoading(false);
-    };
+    });
 
-    checkAuth();
+    // Cleanup subscription
+    return () => unsubscribe();
   }, []);
 
   const signUp = async (email: string, password: string, occupation: string) => {
     try {
       setError(null);
       
-      // Verificar si el usuario ya existe
-      if (STATIC_USERS.some(u => u.email === email)) {
-        throw new Error('User already exists');
-      }
+      // Crear usuario en Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const { user: firebaseUser } = userCredential;
 
-      // Crear nuevo usuario
-      const newUser = { email, uid: Date.now().toString(), occupation };
-      STATIC_USERS.push({ email, password, uid: newUser.uid, occupation });
-      
-      // Guardar en localStorage y estado
-      localStorage.setItem('auth_user', JSON.stringify(newUser));
-      setUser(newUser);
-      return newUser;
+      // Crear documento del usuario en Firestore
+      const userData: UserData = {
+        email,
+        occupation,
+        createdAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp()
+      };
+
+      await setDoc(doc(db, 'users', firebaseUser.uid), userData);
+
+      // Actualizar estado local
+      setUser({
+        ...firebaseUser,
+        occupation
+      });
+
+      return firebaseUser;
     } catch (err: any) {
-      setError(err.message);
+      console.error('Signup error:', err);
+      // Manejar errores específicos de Firebase
+      switch (err.code) {
+        case 'auth/email-already-in-use':
+          setError('Este email ya está registrado');
+          break;
+        case 'auth/invalid-email':
+          setError('Email inválido');
+          break;
+        case 'auth/operation-not-allowed':
+          setError('Operación no permitida');
+          break;
+        case 'auth/weak-password':
+          setError('La contraseña es muy débil');
+          break;
+        default:
+          setError('Error al crear la cuenta');
+      }
       throw err;
     }
   };
@@ -55,32 +112,54 @@ export function useAuth() {
     try {
       setError(null);
       
-      // Verificar credenciales
-      const user = STATIC_USERS.find(u => u.email === email && u.password === password);
-      if (!user) {
-        throw new Error('Invalid email or password');
-      }
+      // Autenticar con Firebase
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const { user: firebaseUser } = userCredential;
 
-      // Crear objeto de usuario sin la contraseña
-      const userData = { email: user.email, uid: user.uid, occupation: user.occupation };
-      
-      // Guardar en localStorage y estado
-      localStorage.setItem('auth_user', JSON.stringify(userData));
-      setUser(userData);
-      return userData;
+      // Obtener datos adicionales de Firestore
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      const userData = userDoc.data() as UserData;
+
+      // Actualizar lastLoginAt
+      await setDoc(doc(db, 'users', firebaseUser.uid), {
+        lastLoginAt: serverTimestamp()
+      }, { merge: true });
+
+      // Actualizar estado local
+      setUser({
+        ...firebaseUser,
+        occupation: userData?.occupation
+      });
+
+      return firebaseUser;
     } catch (err: any) {
-      setError(err.message);
+      console.error('Login error:', err);
+      // Manejar errores específicos de Firebase
+      switch (err.code) {
+        case 'auth/invalid-email':
+          setError('Email inválido');
+          break;
+        case 'auth/user-disabled':
+          setError('Usuario deshabilitado');
+          break;
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+          setError('Email o contraseña incorrectos');
+          break;
+        default:
+          setError('Error al iniciar sesión');
+      }
       throw err;
     }
   };
 
   const logout = async () => {
     try {
-      setError(null);
-      localStorage.removeItem('auth_user');
+      await signOut(auth);
       setUser(null);
     } catch (err: any) {
-      setError(err.message);
+      console.error('Logout error:', err);
+      setError('Error al cerrar sesión');
       throw err;
     }
   };

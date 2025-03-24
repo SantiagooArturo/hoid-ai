@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Mic, Square, AudioWaveformIcon as Waveform, Loader2 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import QuickStudyModes from "@/components/QuickStudyModes"
+import StudyMaterials from "@/components/StudyMaterials"
 
 export default function AudioRecorder() {
   const [isRecording, setIsRecording] = useState(false)
@@ -12,6 +14,7 @@ export default function AudioRecorder() {
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [transcription, setTranscription] = useState("")
   const [summary, setSummary] = useState("")
+  const [studyGuide, setStudyGuide] = useState("")
   const [error, setError] = useState("")
   const [isSelectingTab, setIsSelectingTab] = useState(false)
   
@@ -171,12 +174,36 @@ export default function AudioRecorder() {
           const analysisData = await analysisResponse.json()
           console.log('Análisis recibido:', analysisData)
           setSummary(analysisData.content[0].text)
+
+          // Generate study guide
+          console.log('Generando guía de estudio...')
+          const studyGuideResponse = await fetch('/api/generate-study-guide', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              text: transcriptionData.text,
+              summary: analysisData.content[0].text
+            })
+          })
+
+          if (!studyGuideResponse.ok) {
+            const errorData = await studyGuideResponse.json()
+            throw new Error(errorData.error || 'Error al generar la guía de estudio')
+          }
+
+          const studyGuideData = await studyGuideResponse.json()
+          console.log('Guía de estudio recibida:', studyGuideData)
+          setStudyGuide(studyGuideData.content)
+
         } catch (err) {
           console.error('Error en el proceso:', err)
           setError(err instanceof Error ? err.message : "Error al procesar el audio. Por favor, intenta de nuevo.")
           // En caso de error, limpiamos los estados
           setTranscription("")
           setSummary("")
+          setStudyGuide("")
         } finally {
           setIsAnalyzing(false)
           setIsTranscribing(false)
@@ -187,126 +214,144 @@ export default function AudioRecorder() {
       setError(err instanceof Error ? err.message : "Error al procesar el audio. Por favor, intenta de nuevo.")
       setTranscription("")
       setSummary("")
+      setStudyGuide("")
       setIsAnalyzing(false)
       setIsTranscribing(false)
     }
   }
 
   return (
-    <div className="flex flex-col md:flex-row gap-6">
-      <Card className="w-full md:w-1/3">
-        <CardHeader>
-          <CardTitle>Record Audio</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex justify-center py-6">
-            {isRecording ? (
-              <div className="flex flex-col items-center">
-                <div className="h-24 w-full flex items-center justify-center">
-                  <Waveform className="h-16 w-16 text-red-500 animate-pulse" />
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col md:flex-row gap-6">
+        <Card className="w-full md:w-1/3">
+          <CardHeader>
+            <CardTitle>Grabación de Clase</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-center py-6">
+              {isRecording ? (
+                <div className="flex flex-col items-center">
+                  <div className="h-24 w-full flex items-center justify-center">
+                    <Waveform className="h-16 w-16 text-red-500 animate-pulse" />
+                  </div>
+                  <p className="text-red-500 font-medium">Recording...</p>
                 </div>
-                <p className="text-red-500 font-medium">Recording...</p>
-              </div>
-            ) : isAnalyzing ? (
-              <div className="flex flex-col items-center">
-                <Loader2 className="h-16 w-16 text-blue-500 animate-spin" />
-                <p className="text-blue-500 font-medium">Analyzing audio...</p>
-              </div>
-            ) : isSelectingTab ? (
-              <div className="flex flex-col items-center">
-                <Loader2 className="h-16 w-16 text-blue-500 animate-spin" />
-                <p className="text-blue-500 font-medium">Iniciando grabación...</p>
-                <p className="text-sm text-gray-500 mt-2">Por favor, permite el acceso al audio del sistema</p>
-              </div>
-            ) : (
-              <div className="h-24 w-full flex items-center justify-center">
-                <Mic className="h-16 w-16 text-gray-300 dark:text-gray-600" />
+              ) : isAnalyzing ? (
+                <div className="flex flex-col items-center">
+                  <Loader2 className="h-16 w-16 text-blue-500 animate-spin" />
+                  <p className="text-blue-500 font-medium">Analyzing audio...</p>
+                </div>
+              ) : isSelectingTab ? (
+                <div className="flex flex-col items-center">
+                  <Loader2 className="h-16 w-16 text-blue-500 animate-spin" />
+                  <p className="text-blue-500 font-medium">Iniciando grabación...</p>
+                  <p className="text-sm text-gray-500 mt-2">Por favor, permite el acceso al audio del sistema</p>
+                </div>
+              ) : (
+                <div className="h-24 w-full flex items-center justify-center">
+                  <Mic className="h-16 w-16 text-gray-300 dark:text-gray-600" />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-center space-x-4">
+              <Button
+                onClick={isRecording ? stopRecording : startRecording}
+                variant={isRecording ? "destructive" : "default"}
+                disabled={isAnalyzing || isSelectingTab}
+                className="w-32"
+              >
+                {isRecording ? (
+                  <>
+                    <Square className="mr-2 h-4 w-4" />
+                    Stop
+                  </>
+                ) : (
+                  <>
+                    <Mic className="mr-2 h-4 w-4" />
+                    Record
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {error && (
+              <div className="text-red-500 text-sm text-center">
+                {error}
               </div>
             )}
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="flex justify-center space-x-4">
-            <Button
-              onClick={isRecording ? stopRecording : startRecording}
-              variant={isRecording ? "destructive" : "default"}
-              disabled={isAnalyzing || isSelectingTab}
-              className="w-32"
-            >
-              {isRecording ? (
-                <>
-                  <Square className="mr-2 h-4 w-4" />
-                  Stop
-                </>
-              ) : (
-                <>
-                  <Mic className="mr-2 h-4 w-4" />
-                  Record
-                </>
-              )}
-            </Button>
-          </div>
+        <Card className="w-full md:w-2/3">
+          <CardHeader>
+            <CardTitle>Análisis de la Clase</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="transcription" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="transcription">Transcripción</TabsTrigger>
+                <TabsTrigger value="resumen">Resumen</TabsTrigger>
+                <TabsTrigger value="studyGuide">Study Guide</TabsTrigger>
+              </TabsList>
+              <TabsContent value="transcription" className="mt-4">
+                {!transcription && (isTranscribing || isAnalyzing) ? (
+                  <div className="flex flex-col items-center justify-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <Loader2 className="h-12 w-12 text-blue-500 animate-spin mb-4" />
+                    <p className="text-blue-500 font-medium">Procesando audio...</p>
+                    <p className="text-sm text-gray-500 mt-2">Esto puede tomar unos segundos</p>
+                  </div>
+                ) : transcription ? (
+                  <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <p className="text-sm whitespace-pre-wrap">{transcription}</p>
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-500 py-8">
+                    No hay transcripción disponible
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="resumen" className="mt-4">
+                {!summary && (isTranscribing || isAnalyzing) ? (
+                  <div className="flex flex-col items-center justify-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <Loader2 className="h-12 w-12 text-blue-500 animate-spin mb-4" />
+                    <p className="text-blue-500 font-medium">Generando resumen...</p>
+                    <p className="text-sm text-gray-500 mt-2">Analizando la grabación</p>
+                  </div>
+                ) : summary ? (
+                  <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <p className="text-sm whitespace-pre-wrap">{summary}</p>
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-500 py-8">
+                    No hay resumen disponible
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="studyGuide" className="mt-4">
+                {!studyGuide && (isTranscribing || isAnalyzing) ? (
+                  <div className="flex flex-col items-center justify-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <Loader2 className="h-12 w-12 text-blue-500 animate-spin mb-4" />
+                    <p className="text-blue-500 font-medium">Generando guía de estudio...</p>
+                    <p className="text-sm text-gray-500 mt-2">Analizando el contenido</p>
+                  </div>
+                ) : studyGuide ? (
+                  <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <p className="text-sm whitespace-pre-wrap">{studyGuide}</p>
+                  </div>
+                ) : (
+                  <div className="text-center text-gray-500 py-8">
+                    No hay guía de estudio disponible
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </div>
 
-          {error && (
-            <div className="text-red-500 text-sm text-center">
-              {error}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="w-full md:w-2/3">
-        <CardHeader>
-          <CardTitle>Analysis Results</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="transcription" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="transcription">Transcripción</TabsTrigger>
-              <TabsTrigger value="resumen">Resumen</TabsTrigger>
-              <TabsTrigger value="sentiment">Sentiment</TabsTrigger>
-            </TabsList>
-            <TabsContent value="transcription" className="mt-4">
-              {!transcription && (isTranscribing || isAnalyzing) ? (
-                <div className="flex flex-col items-center justify-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <Loader2 className="h-12 w-12 text-blue-500 animate-spin mb-4" />
-                  <p className="text-blue-500 font-medium">Procesando audio...</p>
-                  <p className="text-sm text-gray-500 mt-2">Esto puede tomar unos segundos</p>
-                </div>
-              ) : transcription ? (
-                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <p className="text-sm whitespace-pre-wrap">{transcription}</p>
-                </div>
-              ) : (
-                <div className="text-center text-gray-500 py-8">
-                  No hay transcripción disponible
-                </div>
-              )}
-            </TabsContent>
-            <TabsContent value="resumen" className="mt-4">
-              {!summary && (isTranscribing || isAnalyzing) ? (
-                <div className="flex flex-col items-center justify-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <Loader2 className="h-12 w-12 text-blue-500 animate-spin mb-4" />
-                  <p className="text-blue-500 font-medium">Generando resumen...</p>
-                  <p className="text-sm text-gray-500 mt-2">Analizando la grabación</p>
-                </div>
-              ) : summary ? (
-                <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <p className="text-sm whitespace-pre-wrap">{summary}</p>
-                </div>
-              ) : (
-                <div className="text-center text-gray-500 py-8">
-                  No hay resumen disponible
-                </div>
-              )}
-            </TabsContent>
-            <TabsContent value="sentiment" className="mt-4">
-              <div className="text-center text-gray-500 py-8">
-                No hay análisis de sentimiento disponible
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      <QuickStudyModes transcription={transcription} summary={summary} />
+      <StudyMaterials transcription={transcription} summary={summary} />
     </div>
   )
 }
